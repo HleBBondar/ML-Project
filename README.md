@@ -21,6 +21,8 @@ Predict whether an order will receive a bad review (review score ≤ 2) *before*
 ## Modeling
 Compared three approaches:
 
+<img width="784" height="940" alt="image" src="https://github.com/user-attachments/assets/85b507ab-c9cf-4a2b-bda3-6c46928d9dc6" />
+
 | Model | ROC-AUC | Recall (bad class) | Precision (bad class) |
 |---|---|---|---|
 | Logistic Regression | 0.53 | 0.07 | 0.62 |
@@ -47,4 +49,3 @@ Ranking test-set orders by predicted risk and targeting the top 20% highest-risk
 
 ## Stack
 `pandas`, `scikit-learn`, `XGBoost`, `SHAP`
-<img width="784" height="940" alt="image" src="https://github.com/user-attachments/assets/85b507ab-c9cf-4a2b-bda3-6c46928d9dc6" />
