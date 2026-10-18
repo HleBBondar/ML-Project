@@ -47,3 +47,4 @@ Ranking test-set orders by predicted risk and targeting the top 20% highest-risk
 
 ## Stack
 `pandas`, `scikit-learn`, `XGBoost`, `SHAP`
+<img width="784" height="940" alt="image" src="https://github.com/user-attachments/assets/85b507ab-c9cf-4a2b-bda3-6c46928d9dc6" />
