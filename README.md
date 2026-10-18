@@ -1,2 +1,2 @@
-# ab-testing-simulation-framework
-A/B Testing Framework.
+# First ML project 
+Ml project.
