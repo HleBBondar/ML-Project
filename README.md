@@ -1,5 +1,5 @@
 [README (2).md](https://github.com/user-attachments/files/33632890/README.2.md)
-# First ML project 
+# Predicting bad e-commerce reviews with XGBoost and SHAP
 Ml project.
 # Predicting Bad Reviews — Olist E-Commerce Dataset
 
