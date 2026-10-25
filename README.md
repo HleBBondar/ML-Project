@@ -1,51 +1,69 @@
-[README (2).md](https://github.com/user-attachments/files/33632890/README.2.md)
-# Predicting bad e-commerce reviews with XGBoost and SHAP
-Ml project.
-# Predicting Bad Reviews — Olist E-Commerce Dataset
+[README.md](https://github.com/user-attachments/files/33925078/README.3.md)[Upl# Predicting Bad Customer Reviews: Olist E-Commerce
 
-## Project Goal
-Predict whether an order will receive a bad review (review score ≤ 2) *before* the customer leaves it, using order-level features available at or shortly after delivery. The business framing: proactively flag high-risk orders so a company could intervene (compensation, faster support) before a negative review is posted.
+A machine learning project that predicts which delivered orders will receive a bad review (1-3 stars), and shows how that prediction could be used to prioritise customer service.
+
+## Goal
+Predict whether an order will end up with a bad review so that a company could contact the riskiest customers *before* a negative review is posted (apology, coupon, faster support).
 
 ## Dataset
-[Olist Brazilian E-Commerce dataset](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce) — 9 relational tables (orders, items, payments, reviews, customers, sellers, products, geolocation).
+[Olist Brazilian E-Commerce dataset](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce) (Kaggle): 9 relational tables with orders, items, payments, reviews, customers, sellers, products and geolocation. Download the CSV files from Kaggle; they are not included in this repository.
 
-## Data Preparation
-- Merged 9 tables on their respective keys (`order_id`, `product_id`, `seller_id`, `customer_id`), handling multiple grains carefully: `order_items` (multiple products per order) and `geolocation` (multiple coordinates per zip prefix) were aggregated to a single row per key **before** merging, to avoid row duplication.
-- Removed orders with `canceled`/`unavailable` status (no real delivery outcome to learn from).
-- Dropped columns that would leak the target (`review_score` itself, review timestamps) or carry no predictive value (raw IDs, free-text review fields).
-- Engineered time-based features from order timestamps: `delivery_days` (actual vs. estimated delivery), `time before delivery` (time to carrier handoff), `time during delivery` (carrier to customer).
-- One-hot encoded categorical features (`payment_type`, `customer_state`).
-- **Target:** `review_score` ≤ 2 → 1 (bad review), else 0. Class distribution: ~78% good / ~22% bad.
-- Train/test split by `order_purchase_timestamp` (time-based, not random) to avoid data leakage from future orders into training.
+## Approach
 
-## Modeling
-Compared three approaches:
+### Data preparation
+- **One row per order.** Tables with several rows per order (`order_items`) were aggregated *before* merging (number of items, total price, total freight, number of distinct sellers). Merging them raw would duplicate orders and let the same review count several times.
+- Merged orders, items, products, payments, reviews and customers on their keys. Kept one review per order.
+- Removed `canceled` and `unavailable` orders and orders without a delivery date (nothing was delivered, so there is no delivery experience to learn from).
+- **Target:** review score <= 3 is `1` (bad), 4-5 is `0` (good). Bad reviews are the minority class: about 17% of the test set (3,202 of 19,306 orders).
+- **Features:** price, freight value, number of items, number of sellers, payment installments, payment value, payment type, customer state, and three delivery-time features built from order timestamps:
+  - `time before delivery`: purchase until the carrier picks the order up
+  - `time during delivery`: carrier pick-up until the customer receives it
+  - `delivery_days`: actual delivery date minus the date promised to the customer (negative means early)
+- **Excluded to avoid leakage or noise:** review score, review dates and review text, raw IDs and raw timestamps. Geolocation was computed but not used in the final model.
+- **Chronological split:** orders sorted by purchase time, first 80% for training and last 20% for testing, with no shuffling, so the model never learns from orders that happened after the ones it is tested on. Scaling was fitted on the training set only.
 
-<img width="784" height="940" alt="image" src="https://github.com/user-attachments/assets/85b507ab-c9cf-4a2b-bda3-6c46928d9dc6" />
+### Models
+All four models were evaluated on the same chronological test set:
 
-| Model | ROC-AUC | Recall (bad class) | Precision (bad class) |
-|---|---|---|---|
-| Logistic Regression | 0.53 | 0.07 | 0.62 |
-| Logistic Regression (balanced) | 0.57 | 0.42 | 0.23 |
-| **XGBoost + scale_pos_weight (best)** | **0.60** | 0.31 | 0.38 |
+| Model | ROC-AUC |
+|---|---|
+| Logistic Regression | 0.637 |
+| Logistic Regression (`class_weight='balanced'`) | 0.642 |
+| XGBoost | 0.636 |
+| XGBoost (`scale_pos_weight`) | 0.635 |
 
-The best model is XGBoost with `scale_pos_weight` tuned to the class imbalance ratio.
+The four models are within 0.007 AUC of each other. With a single split and no cross-validation, I do not read that as a ranking: a more complex model did not beat logistic regression, which suggests the limit is the information in the features, not the algorithm.
 
-## Feature Importance (SHAP)
-The strongest drivers of bad reviews were logistics-related, not price-related:
-1. `delivery_days` — delay relative to the estimated delivery date
-2. `time during delivery` — actual transit time
-3. `n_count` — number of items in the order
-4. `time before delivery` — time to carrier handoff
+XGBoost with `scale_pos_weight` was used for the interpretation and targeting steps below (SHAP works natively with tree models). At the default 0.5 threshold it finds 995 of the 3,202 bad orders (recall 0.31, precision 0.35) with 1,847 false alarms. Overall accuracy (0.79) is lower than the 83% a model would get by always predicting "good", which is why ROC-AUC and recall are used instead of accuracy.
 
-Payment method and customer state had minimal impact. This suggests customer dissatisfaction is driven primarily by logistics performance and order complexity rather than price or payment choice.
+## What drives bad reviews (SHAP)
 
-## Business Impact
-Ranking test-set orders by predicted risk and targeting the top 20% highest-risk orders captures **38% of all actual bad reviews** — nearly 2x better than randomly selecting 20% of orders (which would capture ~20%). This gives a concrete, actionable targeting strategy for proactive customer service.
+![SHAP summary](shap_summary.png)
+
+The strongest drivers are logistics, not price:
+1. `delivery_days`: arriving later than promised
+2. `time during delivery`: long time in transit
+3. `n_items`: orders with more items
+4. `time before delivery`: slow hand-over to the carrier
+
+Larger values of these features push the prediction towards a bad review, and so does a larger number of sellers in the order. Price, payment details and customer state have smaller and less consistent effects. This matches the simple correlations with the target (`time during delivery` 0.26, `delivery_days` 0.23, `time before delivery` 0.14, `n_items` and `n_sellers` about 0.11). SHAP shows what the model relies on, not what causes dissatisfaction.
+
+## Business use: targeting the riskiest 20% of orders
+Orders were ranked by predicted probability of a bad review and the top 20% were flagged (threshold: the 80th percentile of predicted probability, about 0.45).
+
+- The flagged group contains **1,201 of the 3,202 bad reviews (37.5%)**.
+- Random selection of 20% of orders would catch about 20%, so the model is **1.9x better than random**.
+- About 31% of flagged orders really are bad, against a base rate of 16.6%.
+
+This does not make the model a precise predictor, but it does let a support team spend its effort on a group where bad reviews are almost twice as common.
 
 ## Limitations
-- ROC-AUC of 0.60 indicates the available structured features only partially explain review outcomes. Review text (not used here — this was treated as a separate NLP task) likely carries additional signal.
-- Geolocation data was collected but not used in the final model due to ambiguity in aggregating multiple coordinates per zip prefix to a single buyer/seller point.
+- **Timing of the prediction.** The strongest features (`delivery_days`, `time during delivery`) are only known once the order has been delivered. The model therefore predicts between delivery and the review, which suits post-delivery outreach. Intervening before delivery would need a model restricted to features known at dispatch.
+- **Modest signal.** ROC-AUC is about 0.64. The features describe logistics and payments, not product quality or customer expectations. Review text was not used and would be a separate NLP task.
+- **Self-selected reviews.** Only customers who chose to review are in the data, so the model describes reviews that were left, not all customers.
+- **Evaluation.** One chronological split, no cross-validation or confidence intervals, no hyperparameter tuning.
+- **Threshold.** The top-20% threshold was taken from the test set; in production it would be fixed on validation data.
 
 ## Stack
-`pandas`, `scikit-learn`, `XGBoost`, `SHAP`
+Python, pandas, NumPy, scikit-learn, XGBoost, SHAP
+oading README (3).md…]()
